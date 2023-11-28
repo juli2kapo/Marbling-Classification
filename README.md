@@ -98,6 +98,10 @@ python -m pip install -r requirements.txt
   │
   ├── main.py - main script to start training and testing
   │
+  ├── .assets/ - 
+  │   ├── images/ -
+  │   └── others/ -
+  │
   ├── base/ - abstract base classes
   │   ├── base_data_loader.py
   │   ├── base_model.py
@@ -108,29 +112,31 @@ python -m pip install -r requirements.txt
   │   └── config_regression.json
   │
   ├── data/ - default directory for storing input data
+  │   ├── marbling_dataset/ - 
+  │   └── unit_test_data/ - 
   │
   ├── data_loaders/ - anything about data loading goes here
   │   └── data_loaders.py
+  │
+  ├── docs/ - store .md files. Used by Mkdocs for Project Documentation
   │
   ├── models/ - models
   │   ├── __init__.py - defined models by name
   │   └── models.py
   │
-  ├── optimizers/ - optimizers
-  │   └── optimizers.py
+  ├── notebooks/ - Jupyter Notebooks
   │
   ├── saved/ - config, model and reports are saved here
   │   ├── Classification
   │   └── Regression
   │
-  ├── utils/ - utility functions
-  │   ├── parse_config.py - class to handle config file and cli options
-  │   ├── parse_params.py
-  │   └── utils.py
+  └── tests/ - Unit tests for the project
   │
-  ├── wrappers/ - wrappers of modified sklearn models or self defined transforms
-  │   ├── data_transformations.py
-  │   └── wrappers.py
+  └── utils/ - utility functions
+      ├── parse_config.py - class to handle config file and cli options
+      ├── parse_params.py
+      └── utils.py
+
   ```
 
 ## Usage
