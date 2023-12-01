@@ -4,7 +4,6 @@
 # Import necessary libraries
 import os
 from PIL import Image
-import torch
 from torch.utils.data import Dataset
 from torchvision import transforms
 
@@ -32,19 +31,36 @@ class ClassificationDataset(Dataset):
         dataset = ClassificationDataset(path_to_data='path/to/dataset', dataset='example_dataset', classes=['cat', 'dog'])
     """
 
-    def __init__(self, path_to_data, dataset, classes):
+    def __init__(self, path_to_data, dataset):
         """
         Initialize the ClassificationDataset.
 
         Args:
             path_to_data (str): The path to the directory containing the dataset.
             dataset (str): The name of the dataset.
-            classes (list): A list containing the names of classes in the dataset.
         """
         self.path_to_data = path_to_data
         self.dataset = dataset
-        self.classes = classes
+        self.classes = self.load_classes()
         self.images_path, self.images, self.labels = self.load_images()
+
+
+    def load_classes(self):
+        """
+        Load classes into memory.
+
+        Returns:
+            list: A list containing the classes' names, i.e. the directories' names into self.path_to_data.
+        """
+        items = os.listdir(self.path_to_data)
+        classes = []
+        for item in items:
+            if os.path.isdir(os.path.join(self.path_to_data,item)):
+                classes.append(item)       
+        classes.sort()
+
+        return classes
+
 
     def load_images(self):
         """
@@ -102,11 +118,11 @@ class ClassificationDataset(Dataset):
         img = self.images[index]
         label = self.labels[index]
 
-        # Apply any additional transformations if needed
-        transform = transforms.Compose([
-            transforms.ToTensor(),
-        ])
-        img = transform(img)
+        # # Apply any additional transformations if needed
+        # transform = transforms.Compose([
+        #     transforms.ToTensor(),
+        # ])
+        # img = transform(img)
 
         return path, img, label
 

@@ -40,7 +40,7 @@
 
     - INPUT: Lista de regiones "grasa" de la imagen
    
-    - OUTPUT: Vector de features compuesto por 15 elementos
+    - OUTPUT: Vector de features compuesto por 13 elementos
         
         * 1 para cantidad de regiones
         * 4 para promedio, min, max y sd del ÁREA
@@ -53,7 +53,7 @@
         
         1.2. Calcular estadísticas (promedio, min, max y sd) de cada feature
 
-4. **Clasificar las imágenes en en niveles de calidad**
+4. **Clasificar las imágenes en niveles de calidad**
 
     - INPUT: Vector de features
    
