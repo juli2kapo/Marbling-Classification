@@ -3,13 +3,17 @@ import sys
 path = os.path.join(os.path.dirname(__file__), os.pardir)
 sys.path.append(path)
 
-# import cv2
+import cv2
 import pandas as pd 
 import numpy as np
 from tqdm import tqdm
 
 import data_loaders.classification_data_loader as cdl
 import utils.images as ui
+import utils.utils as uu
+
+from sklearn.cluster import KMeans
+import math
 
 
 def features_shape_dataset_to_csv():
@@ -57,7 +61,7 @@ def features_shape_dataset_to_csv():
         # df_csv.append(pd.concat([path, len(components), features.tolist(), label]))
 
     path_to_csv = os.path.join(PATH_TO_DATASET,"marbling_features_shape_dataset.csv")     
-    df_csv.to_csv(path_to_csv, index=False)
+    df_csv.to_csv(path_to_csv, index=False, header=False)
 
 
 def lbp_dataset_to_csv():
@@ -95,4 +99,80 @@ def lbp_dataset_to_csv():
         df_csv.loc[len(df_csv)] = new_row
 
     path_to_csv = os.path.join(PATH_TO_DATASET,"marbling_features_lbp_dataset.csv")     
-    df_csv.to_csv(path_to_csv, index=False)
+    df_csv.to_csv(path_to_csv, index=False, header=False)
+
+
+def orb_dataset_to_csv():
+
+    PATH_TO_DATASET = "data/marbling_dataset_v2"
+    DATASET = "Marbling"
+    k = 12
+
+    dataset = cdl.ClassificationDataset(path_to_data=PATH_TO_DATASET, dataset=DATASET)
+
+    print(f"Tamaño del dataset: {len(dataset)}")
+    print(f"Nombre del dataset: {dataset.dataset}")
+    print(f"Ruta al dataset:    {dataset.path_to_data}")
+    print(f"Clases del dataset: {dataset.classes}")
+
+    # From https://medium.com/@aybukeyalcinerr/bag-of-visual-words-bovw-db9500331b2f
+    # Initiate ORB detector
+    orb = cv2.SIFT_create()
+
+    df_columns = ['path'] + [str(x) for x in list(range(k))] + ['label']
+    df_csv = pd.DataFrame(columns=df_columns)
+
+    orb_descriptor_list = []
+    # loop over the training images and extract all descriptors
+    for i in tqdm(range(len(dataset))):
+        _, image, _ = dataset.__getitem__(i)
+
+        # Convert image to grayscale
+        # image = np.array(image.convert("L"))
+        image = np.array(image)
+
+        # Find the keypoints and compute descriptors with ORB
+        _, desc = orb.detectAndCompute(image, None)
+ 
+        if desc is not None: 
+            orb_descriptor_list.extend(desc)
+
+    # A k-means clustering algorithm who takes 2 parameter which is number 
+    # of cluster(k) and the other is descriptors list(unordered 1d array)
+    # Returns an array that holds central points.
+    kmeans = KMeans(n_clusters = k, n_init=10)
+    kmeans.fit(orb_descriptor_list)
+    visual_words = kmeans.cluster_centers_ 
+
+
+    # Takes 2 parameters. The first one is a dictionary that holds the descriptors that are separated class by class 
+    # And the second parameter is an array that holds the central points (visual words) of the k means clustering
+    # Returns a dictionary that holds the histograms for each images that are separated class by class. 
+    for i in tqdm(range(len(dataset))):
+        path, image, label = dataset.__getitem__(i)
+
+        # Convert image to grayscale
+        # image = np.array(image.convert("L"))
+        image = np.array(image)
+
+        # Find the keypoints and compute descriptors with ORB
+        _, desc = orb.detectAndCompute(image, None)
+        
+        histogram = np.zeros(len(visual_words))
+        
+        if desc is not None: 
+            for each_feature in desc:
+                count = math.inf
+                ind = 0
+                for i in range(len(visual_words)):
+                    dist = uu.calculate_distance(each_feature, visual_words[i]) 
+                    if(dist < count):
+                        ind = i
+                        count = dist
+                histogram[ind] += 1
+
+        new_row = [path] + histogram.tolist() + [label]
+        df_csv.loc[len(df_csv)] = new_row
+
+    path_to_csv = os.path.join(PATH_TO_DATASET,"marbling_features_sift_rgb_dataset.csv")     
+    df_csv.to_csv(path_to_csv, index=False, header=False)
