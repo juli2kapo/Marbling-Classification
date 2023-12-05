@@ -7,12 +7,11 @@ import argparse
 import cv2
 import numpy as np
 from skimage import feature
+from sklearn.preprocessing import MinMaxScaler
+import pandas as pd
 
 import torch
 import torch.nn as nn
-import torch.optim as optim
-import torchvision.transforms as transforms
-from torch.autograd import Variable
 
 
 class mlp_class(nn.Module):
@@ -71,8 +70,11 @@ class NeuralNetworkClassifier:
         Returns:
         - model: PyTorch neural network model.
         """
+        # Create the mlp classification model by using the above model definition.
         model = mlp_class(self.input_model, self.output_model) 
+        # Initialize model with the pretrained weights
         model.load_state_dict(torch.load(self.model_path))
+        # set the model to inference mode
         model.eval()
 
         return model
@@ -87,35 +89,27 @@ class NeuralNetworkClassifier:
         Returns:
         - prediction (int): Predicted class (0 or 1).
         """
-        # Convert the LBP histogram to a PyTorch tensor
-        input_tensor = torch.FloatTensor(lbp_histogram).unsqueeze(0)
+        # # Convert the LBP histogram to a PyTorch tensor
+        # input_tensor = torch.FloatTensor(lbp_histogram).unsqueeze(0)
+        # # Make the input tensor a variable
+        # input_variable = Variable(input_tensor)
+        # # Forward pass through the neural network
+        # output = self.model(input_variable)
+        # # Get the predicted class (0 or 1)
+        # _, prediction = torch.max(output.data, 1)
 
-        # Make the input tensor a variable
-        input_variable = Variable(input_tensor)
+        lbp_histogram = torch.tensor(lbp_histogram, dtype=torch.float32)
+        # lbp_histogram = torch.tensor(lbp_histogram.values, dtype=torch.float32)
+        # lbp_histogram = lbp_histogram[None,:]
 
-        # Forward pass through the neural network
-        output = self.model(input_variable)
+        pred = self.model(lbp_histogram)
+        pred = torch.argmax(pred, 1).detach().numpy()
 
-        # Get the predicted class (0 or 1)
-        _, prediction = torch.max(output.data, 1)
+        # return prediction.item()
+        return pred
+    
 
-        # model.eval()
-        # y_pred = model(X_test)
-
-        # y_pred_np = torch.argmax(y_pred, 1).detach().numpy()
-        # y_test_np = torch.argmax(y_test, 1).detach().numpy()
-
-        # cm = confusion_matrix(y_test_np, y_pred_np)
-        # acc = accuracy_score(y_test_np, y_pred_np)
-        # prec = precision_score(y_test_np, y_pred_np, average='macro')
-        # rec = recall_score(y_test_np, y_pred_np, average='macro')
-        # f1 = f1_score(y_test_np, y_pred_np, average='macro')
-
-
-        return prediction.item()
-
-
-class LBPImageClassifier:
+class LBPImageDescriptor:
     """
     A simple image classifier using Local Binary Patterns (LBP).
 
@@ -135,7 +129,7 @@ class LBPImageClassifier:
 
     def __init__(self, p=8, radius=1, eps=1e-7):
         """
-        Initialize the LBPImageClassifier.
+        Initialize the LBPImageDescriptor.
 
         Args:
         - p (int): Number of neighbors for LBP computation.
@@ -173,7 +167,15 @@ class LBPImageClassifier:
         # normalize the histogram
         histogram = histogram.astype("float")
         histogram /= (histogram.sum() + self.eps)
-        
+
+        histogram.shape = (1,26)
+        # print(histogram)
+        # scaler = MinMaxScaler(feature_range=(-1, 1))  # Rescale -1 to 1
+        # histogram = pd.DataFrame(histogram)
+        # print(histogram)
+        # histogram = pd.DataFrame(scaler.fit_transform(histogram))
+        # print(histogram)
+
         # return the histogram of Local Binary Patterns
         return histogram
 
@@ -199,7 +201,7 @@ def get_image_paths(input_dir):
 def main():
     # Parse command-line arguments
     parser = argparse.ArgumentParser(description='LBP Image Classifier')
-    parser.add_argument('-i', '--image_path', type=str, help='Path to the input image', required=True)
+    parser.add_argument('-i', '--images_path', type=str, help='Path to the input image', required=True)
     parser.add_argument('-m', '--model_path', type=str, help='Path to the classification model', required=True)
     parser.add_argument('-o', '--output_model', type=int, help='Model output size', required=True)
     parser.add_argument('-p', '--p', type=int, default=8, help='Number of neighbors for LBP computation')
@@ -207,38 +209,37 @@ def main():
 
     args = parser.parse_args()
 
-    # Validate image path
-    if not os.path.isfile(args.image_path):
-        # Validate input directory
-        if not os.path.isdir(args.input_dir):
-            print(f"Error: The specified input directory '{args.image_path}' is not valid or does not exist.")
-            return
-        else:
-            print(f"Error: The specified image path '{args.image_path}' is not valid or does not exist.")
-            return
+    # Validate input image/directory path
+    if (not os.path.isfile(args.images_path)) and (not os.path.isdir(args.images_path)):
+        print(f"Error: The specified input image/directory '{args.images_path}' is not valid or does not exist.")
+        return
 
     # Validate model path
     if not os.path.isfile(args.model_path):
         print(f"Error: The specified model path '{args.model_path}' is not valid or does not exist.")
         return
 
-    # Initialize the classifier
-    classifier = LBPImageClassifier(p=args.p, radius=args.radius)
-
-    # Compute LBP histogram for the input image
-    lbp_histogram = classifier.compute_lbp_histogram(args.image_path)
-
-    # Print the computed histogram
-    print("LBP Histogram:", lbp_histogram)
-
+    # Initialize the descriptor
+    descriptor = LBPImageDescriptor(p=args.p, radius=args.radius)
     # Initialize the neural network classifier
     neural_network_classifier = NeuralNetworkClassifier(model_path=args.model_path, input_model=args.p+2, output_model=args.output_model)
 
-    # Classify the image based on the LBP histogram
-    prediction = neural_network_classifier.classify(lbp_histogram)
+    # Retrieve paths of all image files within the input directory and its subdirectories
+    images_path = get_image_paths(args.images_path)
+    if len(images_path) == 0:
+        images_path = [args.images_path]
 
-    # Print the classification result
-    print("Classification result:", prediction)
+    # Iterate over image paths
+    for img_path in images_path:
+        # Compute LBP histogram for the current image
+        lbp_histogram = descriptor.compute_lbp_histogram(img_path)
+        
+        # Classify the image based on the LBP histogram
+        prediction = neural_network_classifier.classify(lbp_histogram)
+
+        
+        # Print the classification result for the current image
+        print(f"Image: {img_path}, Classification Result: {prediction}")
 
 
 if __name__ == '__main__':

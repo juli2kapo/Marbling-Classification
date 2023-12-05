@@ -14,7 +14,7 @@ class TestLBPImageClassifier(unittest.TestCase):
 
     def test_compute_lbp_histogram(self):
         # Set up the classifier with test parameters
-        classifier = scm.LBPImageClassifier(p=24, radius=8)
+        classifier = scm.LBPImageDescriptor(p=24, radius=8)
         
         # Define the path to the test image
         test_image_path_1 = 'data/marbling_dataset_v2/L0/45.png'
