@@ -1,13 +1,12 @@
 import copy
 
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import torch
 import torch.nn as nn
 import torch.optim as optim
 import tqdm
-import time 
+import onnx, onnxruntime
 
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import MinMaxScaler
@@ -33,7 +32,7 @@ def init_normal(m):
         m.bias.data.fill_(0)
 
 class Multiclass(nn.Module):
-    def __init__(self):
+    def __init__(self, input_net, output_net):
         super().__init__()
         self.hidden1 = nn.Linear(input_net, 150)
         self.act1 = nn.ReLU()
@@ -62,13 +61,19 @@ class Multiclass(nn.Module):
 #             "data/marbling_dataset_v2/marbling_features_orb_dataset.csv"
 #            ]
 
-datasets = [#"shape",
+datasets = ["shape",
             "lbp",
-            #"sift",
-            #"sift_rgb",
-            #"orb"
+            "sift",
+            "sift_rgb",
+            "orb"
            ]
+
 min_max_scale = False
+
+# prepare model and training parameters
+n_epochs = 500
+batch_size = 10
+
 
 for dataset in datasets:
     path_to_dataset = f"data/marbling_dataset_v2/marbling_features_{dataset}_dataset.csv"
@@ -87,13 +92,12 @@ for dataset in datasets:
     # 0123; 4567
     y.replace(to_replace=1, value=0, inplace=True)
     y.replace(to_replace=2, value=0, inplace=True)
+    y.replace(to_replace=3, value=0, inplace=True)
 
-    y.replace(to_replace=3, value=1, inplace=True)
     y.replace(to_replace=4, value=1, inplace=True)
-
-    y.replace(to_replace=5, value=2, inplace=True)
-    y.replace(to_replace=6, value=2, inplace=True)
-    y.replace(to_replace=7, value=2, inplace=True)
+    y.replace(to_replace=5, value=1, inplace=True)
+    y.replace(to_replace=6, value=1, inplace=True)
+    y.replace(to_replace=7, value=1, inplace=True)
 
     input_net = len_features-1
     output_net = len(y.unique())
@@ -120,16 +124,13 @@ for dataset in datasets:
 
     torch.manual_seed(1)
     # loss metric and optimizer
-    model = Multiclass()
+    model = Multiclass(input_net, output_net)
     # use the modules apply function to recursively apply the initialization
     # model.apply(init_normal)
 
     loss_fn = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr=0.0001)
 
-    # prepare model and training parameters
-    n_epochs = 400
-    batch_size = 10
     batches_per_epoch = len(X_train) // batch_size
 
     best_acc = - np.inf   # init to negative infinity
@@ -187,22 +188,19 @@ for dataset in datasets:
                 best_weights = copy.deepcopy(model.state_dict())
         # print(f"Epoch {epoch} validation: Cross-entropy={ce:.2f}, Accuracy={acc*100:.1f}%")
 
-    # Restore best model
+    # Restore best model and save it
     model.load_state_dict(best_weights)
-
     torch.save(model.state_dict(), f"outputs/mlp_{dataset}_{output_net}classes.pt")
 
-    # Export the model
-    # torch.onnx.export(model,                        # model being run
-    #                 "outputs/mlp_{dataset}_{output_net}classes.pt",   # model input (or a tuple for multiple inputs)
-    #                 "outputs/mlp_{dataset}_{output_net}classes.onnx", # where to save the model (can be a file or file-like object)
-    #                 export_params=True,             # store the trained parameter weights inside the model file
-    #                 opset_version=10,               # the ONNX version to export the model to
-    #                 do_constant_folding=True,       # whether to execute constant folding for optimization
-    #                 input_names = ['input'],        # the model's input names
-    #                 output_names = ['output'],      # the model's output names
-    #                 )
+    # Export the model from PyTorch to ONNX
+    torch_input = torch.randn(1, input_net)
+    onnx_program = torch.onnx.dynamo_export(model, torch_input)
+    onnx_program.save(f"outputs/mlp_{dataset}_{output_net}classes.onnx")
+    # Check model
+    onnx_model = onnx.load(f"outputs/mlp_{dataset}_{output_net}classes.onnx")
+    onnx.checker.check_model(onnx_model)
 
+    # Eval PyTorch model
     model.eval()
     y_pred = model(X_test)
 
@@ -216,7 +214,7 @@ for dataset in datasets:
     f1 = f1_score(y_test_np, y_pred_np, average='macro')
 
     print("\n######################################################################")
-    print("MLP MODEL FOR", dataset)
+    print("MLP PYTORCH MODEL FOR", dataset)
     print("  Confusion Matrix:\n",cm)
     print("  Accuracy: ", acc)
     print("  Precision:", prec)
@@ -225,17 +223,32 @@ for dataset in datasets:
     print("######################################################################\n\n")
 
 
-# # Plot the loss and accuracy
-# plt.plot(train_loss_hist, label="train")
-# plt.plot(test_loss_hist, label="test")
-# plt.xlabel("epochs")
-# plt.ylabel("cross entropy")
-# plt.legend()
-# plt.show()
+    # Eval ONNX model
+    ort_session = onnxruntime.InferenceSession(f"outputs/mlp_{dataset}_{output_net}classes.onnx", providers=['CPUExecutionProvider'])
 
-# plt.plot(train_acc_hist, label="train")
-# plt.plot(test_acc_hist, label="test")
-# plt.xlabel("epochs")
-# plt.ylabel("accuracy")
-# plt.legend()
-# plt.show()
+    def to_numpy(tensor):
+        return tensor.detach().cpu().numpy() if tensor.requires_grad else tensor.cpu().numpy()
+
+    y_pred_np = []
+    for x in X_test:
+        ort_input = {ort_session.get_inputs()[0].name: np.expand_dims(to_numpy(x),0)}
+        ort_output = ort_session.run(None, ort_input)
+        y_pred_np.append(np.argmax(ort_output[0], axis=1))
+    
+    # y_pred_np = torch.argmax(y_pred, 1).detach().numpy()
+    # y_test_np = torch.argmax(y_test, 1).detach().numpy()
+
+    cm = confusion_matrix(y_test_np, y_pred_np)
+    acc = accuracy_score(y_test_np, y_pred_np)
+    prec = precision_score(y_test_np, y_pred_np, average='macro')
+    rec = recall_score(y_test_np, y_pred_np, average='macro')
+    f1 = f1_score(y_test_np, y_pred_np, average='macro')
+
+    print("\n######################################################################")
+    print("MLP ONNX MODEL FOR", dataset)
+    print("  Confusion Matrix:\n",cm)
+    print("  Accuracy: ", acc)
+    print("  Precision:", prec)
+    print("  Recall:   ", rec)
+    print("  F-1 score ", f1)
+    print("######################################################################\n\n")

@@ -7,3 +7,6 @@ tqdm
 scikit-learn
 scikit-image
 matplotlib
+onnx
+onnxruntime
+onnxscript

@@ -13,6 +13,8 @@ import pandas as pd
 import torch
 import torch.nn as nn
 
+import utils.arrays as ua
+
 
 class mlp_class(nn.Module):
     def __init__(self, input_net, output_net):
@@ -229,6 +231,9 @@ def main():
     if len(images_path) == 0:
         images_path = [args.images_path]
 
+    test_acc = False
+    tp = 0
+    fp = 0
     # Iterate over image paths
     for img_path in images_path:
         # Compute LBP histogram for the current image
@@ -237,9 +242,25 @@ def main():
         # Classify the image based on the LBP histogram
         prediction = neural_network_classifier.classify(lbp_histogram)
 
-        
+        if test_acc:
+            true = [int(img_path.split("/")[-2][-1])]
+
+            # mapping_dict_2class = {0:0,1:0,2:0,3:0,4:1,5:1,6:1,7:1}
+            # true = ua.map_values_with_dict(true, mapping_dict_2class)
+
+            mapping_dict_3class = {0:0,1:0,2:0,3:1,4:1,5:2,6:2,7:2}
+            true = ua.map_values_with_dict(true, mapping_dict_3class)
+
+            if true[0]==prediction[0]:
+                tp+=1
+            else:
+                fp+=1
+
         # Print the classification result for the current image
-        print(f"Image: {img_path}, Classification Result: {prediction}")
+        print(f"Image: {img_path}, Classification Result: {prediction}, True: {true}")
+
+    if test_acc:
+        print(f"Accuracy: {tp/(tp+fp)}")
 
 
 if __name__ == '__main__':
